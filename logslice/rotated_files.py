@@ -1,48 +1,47 @@
-"""Utilities for discovering and ordering rotated log file archives."""
+"""Discover and sort rotated log files for a given base log path."""
 
-import os
 import re
 from pathlib import Path
 from typing import List
 
-# Matches common rotated log suffixes: .1, .2, .gz, .1.gz, .2.gz, etc.
-_ROTATED_SUFFIX_RE = re.compile(r'\.(\d+)(\.gz)?$')
+
+_ROTATION_RE = re.compile(
+    r"^(?P<base>.+\.log)(?:\.(?P<index>\d+))?(?:\.gz)?$"
+)
 
 
-def _rotation_key(path: Path) -> tuple:
-    """Return a sort key so that the current log sorts first,
-    followed by .1, .2, ... (older files last)."""
-    match = _ROTATED_SUFFIX_RE.search(path.name)
-    if match:
-        index = int(match.group(1))
-        is_gz = 1 if match.group(2) else 0
-        return (1, index, is_gz)
-    # No numeric suffix — this is the active/current log file
-    return (0, 0, 0)
+def _rotation_key(path: Path) -> int:
+    """Return a sort key so files are ordered oldest-first.
+
+    app.log.2.gz -> 2  (oldest)
+    app.log.1    -> 1
+    app.log      -> 0  (newest)
+    """
+    m = _ROTATION_RE.match(path.name)
+    if m and m.group("index") is not None:
+        return int(m.group("index"))
+    return 0
 
 
 def find_rotated_files(base_path: str) -> List[Path]:
-    """Given a log file path, return an ordered list of all related rotated
-    files (including the base file itself) sorted from newest to oldest.
+    """Return all rotated variants of *base_path*, sorted oldest-first.
 
-    Example:  /var/log/app.log  →  [app.log, app.log.1, app.log.2.gz, ...]
+    Includes the base file itself plus any numbered / compressed siblings.
     """
     base = Path(base_path)
-    if not base.exists():
-        raise FileNotFoundError(f"Base log file not found: {base_path}")
-
-    parent = base.parent
+    directory = base.parent
     stem = base.name  # e.g. "app.log"
 
     candidates: List[Path] = []
-    for entry in parent.iterdir():
+    for entry in directory.iterdir():
         if entry.name == stem or entry.name.startswith(stem + "."):
             candidates.append(entry)
 
-    candidates.sort(key=_rotation_key)
+    # Sort: highest rotation index first (oldest), base file last (newest)
+    candidates.sort(key=_rotation_key, reverse=True)
     return candidates
 
 
 def is_compressed(path: Path) -> bool:
-    """Return True if the file appears to be gzip-compressed."""
+    """Return True if *path* is a gzip-compressed file."""
     return path.suffix == ".gz"
