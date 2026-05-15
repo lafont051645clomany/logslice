@@ -48,6 +48,13 @@ def test_find_rotated_files_single(tmp_path: Path) -> None:
     assert files == [base]
 
 
+def test_find_rotated_files_returns_path_objects(log_dir: Path) -> None:
+    """find_rotated_files should always return a list of Path objects."""
+    base = log_dir / "app.log"
+    files = find_rotated_files(str(base))
+    assert all(isinstance(f, Path) for f in files)
+
+
 def test_is_compressed(tmp_path: Path) -> None:
     assert is_compressed(tmp_path / "app.log.gz") is True
     assert is_compressed(tmp_path / "app.log") is False
